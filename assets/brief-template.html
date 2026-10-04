@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>@@TITLE@@</title>
+<style>
+:root { color-scheme: light dark; --bg:#f5f7fb; --panel:#fff; --fg:#17243b; --muted:#53627a; --line:#c7d0df; --select:#245ad1; }
+@media (prefers-color-scheme:dark) { :root { --bg:#111824; --panel:#1b2535; --fg:#edf2fc; --muted:#bcc9dc; --line:#56657c; --select:#9cbcff; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 system-ui, sans-serif; }
+main { max-width:1600px; margin:auto; padding:24px; }
+h1 { margin:0 0 6px; font-size:clamp(23px,4vw,32px); }
+p { margin:8px 0; }
+.meta,.hint { color:var(--muted); font-size:14px; }
+.legend { display:flex; flex-wrap:wrap; gap:8px 18px; margin:16px 0; font-size:14px; }
+.legend span { display:inline-flex; align-items:center; gap:7px; }
+.dot { width:10px; height:10px; border-radius:50%; background:var(--status-color); }
+.layout { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:18px; align-items:start; }
+.viewer,.details { min-width:0; background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+.toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:12px; border-bottom:1px solid var(--line); }
+.toolbar label { display:flex; align-items:center; gap:6px; max-width:100%; min-width:0; white-space:nowrap; }
+select { max-width:100%; min-width:0; padding:6px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--fg); font:inherit; }
+button { color:var(--fg); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 12px; font:inherit; cursor:pointer; }
+button:disabled { opacity:.5; cursor:default; }
+button:focus-visible,a:focus-visible { outline:3px solid var(--select); outline-offset:3px; }
+.canvas { overflow:auto; max-height:72vh; padding:12px; }
+.canvas svg { display:block; max-width:none; }
+.canvas .node-card { fill:var(--panel); stroke:var(--line); stroke-width:1.5; }
+.canvas .node text,.canvas .edge-label { fill:var(--fg); font-family:system-ui,sans-serif; }
+.canvas .node .status-text { fill:var(--muted); }
+.node { cursor:pointer; text-decoration:none; }
+.canvas .node:hover .node-card,.canvas .node.selected .node-card,.canvas .node:focus .node-card { stroke:var(--select); stroke-width:3; }
+.canvas .edge { fill:none; stroke:var(--muted); stroke-width:1.6; }
+.canvas .edge-label { paint-order:stroke; stroke:var(--panel); stroke-width:5; stroke-linejoin:round; }
+.details { padding:18px; overflow-wrap:anywhere; position:sticky; top:14px; max-height:86vh; overflow:auto; }
+.details h2 { margin:0 0 4px; font-size:20px; }
+.details dt { color:var(--muted); font-size:14px; margin-top:14px; }
+.details dd { margin:3px 0; white-space:pre-wrap; }
+.details a { color:var(--select); }
+.details ul { padding-left:20px; margin:5px 0; }
+.details details { margin:12px 0; }
+.details summary { cursor:pointer; font-weight:500; }
+.node-detail-status { font-size:14px; }
+.hint { padding:0 12px 12px; }
+@media(max-width:900px) { .layout { grid-template-columns:minmax(0,1fr); } main { padding:14px; } .canvas { max-height:52vh; } .details { position:static; max-height:none; } .toolbar label { width:100%; } .toolbar select { flex:1; width:0; } }
+@media print { .toolbar,.hint { display:none; } .layout { display:block; } .canvas,.details { overflow:visible; max-height:none; position:static; } .canvas svg { max-width:100%; height:auto !important; } }
+</style>
+</head>
+<body>
+<main>
+<h1>@@TITLE@@</h1>
+<p>@@SUMMARY@@</p>
+<p class="meta">@@AS_OF@@</p>
+<div class="legend" aria-label="Node status legend">@@LEGEND@@</div>
+<div class="layout">
+<section class="viewer" aria-label="Overview diagram">
+<div class="toolbar">
+<button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+<button type="button" id="zoom-in" aria-label="Zoom in">＋</button>
+<button type="button" id="reset">Original size</button>
+<button type="button" id="fit">Fit to width</button>
+<span id="scale" class="meta" aria-live="polite">100%</span>
+<label for="node-picker">Select node <select id="node-picker"></select></label>
+</div>
+<div class="canvas">@@SVG@@</div>
+<p class="hint">Click a node for details. Scroll to explore larger diagrams. Layout position does not imply execution order; follow the arrows and labels.</p>
+<noscript><p class="hint">JavaScript is disabled in this viewer. Open this HTML in a system browser; all node details remain readable below.</p></noscript>
+</section>
+<section class="details" id="details" aria-label="Node details" aria-live="polite">@@DETAILS@@</section>
+</div>
+</main>
+<script type="application/json" id="brief-data">@@DATA@@</script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById('brief-data').textContent);
+  const labels = {done:'Completed',active:'Active',blocked:'Blocked',planned:'Planned',unknown:'Unknown',neutral:'No progress specified'};
+  const details = document.getElementById('details');
+  const svg = document.querySelector('.canvas svg');
+  const nodes = new Map(data.nodes.map(n => [n.id,n]));
+  const picker = document.getElementById('node-picker');
+  const fields = [['description','Description'],['input','Input'],['output','Output'],['validation','Completion criterion'],['blocker','Blocking cause'],['next_step','Next step']];
+  function el(tag,text) { const x=document.createElement(tag); if(text !== undefined) x.textContent=text; return x; }
+  function select(id) {
+    const n=nodes.get(id); if(!n) return;
+    picker.value=id;
+    details.replaceChildren(el('h2',n.label));
+    const status=el('p',labels[n.status]); status.className='node-detail-status'; details.append(status);
+    const dl=el('dl');
+    for(const [key,label] of fields) if(n[key]) dl.append(el('dt',label),el('dd',n[key]));
+    if(n.evidence.length) {
+      dl.append(el('dt','Evidence')); const dd=el('dd'),list=el('ul');
+      for(const evidence of n.evidence) {
+        const li=el('li'); li.append(el('span',evidence.label+': '));
+        if(/^https?:\/\//i.test(evidence.source)) {
+          const a=el('a',evidence.source); a.href=evidence.source; a.target='_blank'; a.rel='noopener noreferrer'; li.append(a);
+        } else li.append(el('span',evidence.source));
+        list.append(li);
+      }
+      dd.append(list); dl.append(dd);
+    }
+    details.append(dl);
+    for(const a of svg.querySelectorAll('[data-node-id]')) {
+      const selected=a.getAttribute('data-node-id')===id;
+      a.classList.toggle('selected',selected); a.setAttribute('aria-pressed',String(selected));
+    }
+  }
+  for(const n of data.nodes) { const option=el('option',n.label+' · '+labels[n.status]); option.value=n.id; picker.append(option); }
+  picker.addEventListener('change',()=>{
+    select(picker.value);
+    const a=Array.from(svg.querySelectorAll('[data-node-id]')).find(x=>x.getAttribute('data-node-id')===picker.value);
+    if(a) a.scrollIntoView({block:'nearest',inline:'center'});
+  });
+  for(const a of svg.querySelectorAll('[data-node-id]')) {
+    a.addEventListener('click',event=>{event.preventDefault(); select(a.getAttribute('data-node-id'));});
+    a.addEventListener('keydown',event=>{if(event.key===' ' || event.key==='Enter') {event.preventDefault(); select(a.getAttribute('data-node-id'));}});
+  }
+  let zoom=1;
+  function setZoom(value) {
+    zoom=Math.min(2,Math.max(.25,value));
+    svg.style.width=data.canvas.width*zoom+'px'; svg.style.height=data.canvas.height*zoom+'px';
+    document.getElementById('scale').textContent=Math.round(zoom*100)+'%';
+    document.getElementById('zoom-out').disabled=zoom<=.25;
+    document.getElementById('zoom-in').disabled=zoom>=2;
+  }
+  document.getElementById('zoom-in').addEventListener('click',()=>setZoom(zoom+.25));
+  document.getElementById('zoom-out').addEventListener('click',()=>setZoom(zoom-.25));
+  document.getElementById('reset').addEventListener('click',()=>setZoom(1));
+  function fitWidth() { setZoom(Math.min(1,(svg.parentElement.clientWidth-24)/data.canvas.width)); }
+  document.getElementById('fit').addEventListener('click',fitWidth);
+  select(data.nodes[0].id);
+  const fitted=(svg.parentElement.clientWidth-24)/data.canvas.width;
+  // Preserve readable labels on narrow screens; explicit fit gives an overview.
+  setZoom(fitted>=.7 ? Math.min(1,fitted) : 1);
+  if(fitted<.7) {
+    const canvas=svg.parentElement;
+    const first=svg.querySelector('.node-card').getBoundingClientRect();
+    const viewport=canvas.getBoundingClientRect();
+    canvas.scrollLeft=canvas.scrollLeft+first.left-viewport.left+(first.width-canvas.clientWidth)/2;
+  }
+})();
+</script>
+</body>
+</html>

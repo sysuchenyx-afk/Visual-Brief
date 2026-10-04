@@ -1,0 +1,4 @@
+interface:
+  display_name: "Visual Brief"
+  short_description: "Explain progress and architecture with diagrams and offline HTML"
+  default_prompt: "Use $visual-brief to explain this project's progress using real evidence, with a status and dependency diagram plus clickable node details in offline HTML."

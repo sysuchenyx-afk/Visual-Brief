@@ -1,0 +1,52 @@
+{
+  "title": "Example: Data processing progress (fictional demo)",
+  "kind": "progress",
+  "direction": "LR",
+  "summary": "All content is fictional: inputs are checked, processing is active, and the report is waiting for results.",
+  "as_of": "Demo snapshot, not actual project progress",
+  "nodes": [
+    {
+      "id": "input",
+      "label": "Check inputs",
+      "status": "done",
+      "description": "Demonstrates a completed node with supporting evidence.",
+      "input": "Demo sample list",
+      "output": "Checked demo inputs",
+      "validation": "Fictional demo: input check passed",
+      "evidence": [
+        {
+          "label": "Fictional check record",
+          "source": "Demo record showing the evidence field format only"
+        }
+      ]
+    },
+    {
+      "id": "process",
+      "label": "Process data",
+      "status": "active",
+      "input": "Checked demo inputs",
+      "next_step": "Demo: inspect processing results"
+    },
+    {
+      "id": "report",
+      "label": "Generate report",
+      "status": "planned",
+      "input": "Validated demo results",
+      "output": "Demo report"
+    }
+  ],
+  "edges": [
+    {
+      "from": "input",
+      "to": "process",
+      "type": "data",
+      "label": "Checked inputs"
+    },
+    {
+      "from": "process",
+      "to": "report",
+      "type": "dependency",
+      "label": "After result validation"
+    }
+  ]
+}
